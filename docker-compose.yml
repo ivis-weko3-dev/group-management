@@ -1,0 +1,28 @@
+version: "3.2"
+
+services:
+  redis:
+    restart: "always"
+    image: redis
+    ports:
+      - "6379:6379"
+    deploy:
+      resources:
+        limits:
+          memory: 100m
+  nginx:
+    restart: "always"
+    build: ./nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - type: bind
+        source: .
+        target: /code
+    links:
+      - redis
+    deploy:
+      resources:
+        limits:
+          memory: 100m
