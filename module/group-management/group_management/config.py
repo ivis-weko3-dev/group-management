@@ -23,5 +23,5 @@ CREATE_GROUP_ERR_SUFFIX='_create_group_err'
 USER_AUTHORIZATION={
     'member': 1,
     'admin': 2,
-    'menber_admin': 3
+    'member_admin': 3
 }
