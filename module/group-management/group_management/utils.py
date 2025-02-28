@@ -145,9 +145,7 @@ def create_group(entity_id, access_token):
         client_cert = json.loads(redis.get(client_cert_key))
         client_secret = client_cert.get('client_secret')
         # Get the group information to be created
-        group_info_file = management_info.get('group_info')
-        with open(group_info_file, 'r') as f:
-            group_info = csv.DictReader(f, delimiter='\t')[0]
+        group_info = management_info.get('group_info')
         group_info_data = {
             'displayName': group_info.get('name'),
             'description': group_info.get('description'),
