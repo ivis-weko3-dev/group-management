@@ -1,7 +1,7 @@
 import redis
 from redis import sentinel
 
-from .config import CACHE_REDIS_SENTINELS, CACHE_REDIS_SENTINEL_MASTER, CACHE_TYPE, REDIS_URL
+from .config import REDIS_SENTINELS, REDIS_SENTINEL_MASTER, CACHE_TYPE, REDIS_URL
 
 class RedisConnection:
     """Redis connection class
@@ -66,8 +66,8 @@ class RedisConnection:
         """
         store = None
         try:
-            sentinels = sentinel.Sentinel(CACHE_REDIS_SENTINELS, decode_responses=False)
-            store = sentinels.master_for(CACHE_REDIS_SENTINEL_MASTER, db=db)
+            sentinels = sentinel.Sentinel(REDIS_SENTINELS, decode_responses=False)
+            store = sentinels.master_for(REDIS_SENTINEL_MASTER, db=db)
         except Exception as ex:
             raise ex
         

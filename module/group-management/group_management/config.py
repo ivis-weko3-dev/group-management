@@ -1,16 +1,16 @@
-HOST_NAME='192.168.56.118'
-CERT_FILE='/etc/pki/tls/{}/certs/sample.cer'
-KEY_FILE='/etc/pki/tls/{}/private/sample.key'
+HOST_NAME='localhost'
+CERT_FILE='/etc/pki/tls/{}/certs/server.crt'
+KEY_FILE='/etc/pki/tls/{}/private/server.key'
 AUTHORIZATION_BASE_URL='https://dev2.cg.gakunin.jp/oauth'
 CORE_BASE_URL='https://sample.co.jp'
 REDIRECT_URL='https://' + HOST_NAME + '/group-management/create'
 
 # redis config
 CACHE_TYPE = 'redis'
-REDIS_HOST = '192.168.56.118'
+REDIS_HOST = 'localhost'
 REDIS_URL = 'redis://' + REDIS_HOST + ':6379/'
-CACHE_REDIS_SENTINEL_MASTER = 'mymaster'
-CACHE_REDIS_SENTINELS = [("sentinel-service.re","26379")]
+REDIS_SENTINEL_MASTER = 'mymaster'
+REDIS_SENTINELS = [("sentinel-service.re","26379")]
 MANAGEMENT_DB=0
 CELERY_BROKER_DB=1
 CELERY_BACKEND_DB=2

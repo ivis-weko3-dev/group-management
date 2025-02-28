@@ -149,8 +149,9 @@ def create_group(entity_id, access_token):
         with open(group_info_file, 'r') as f:
             group_info = csv.DictReader(f, delimiter='\t')[0]
         group_info_data = {
-            'displayName': group_info.get('displayName'),
-            'description': group_info.get('description')
+            'displayName': group_info.get('name'),
+            'description': group_info.get('description'),
+            'public': group_info.get('public')
         }
         data = generate_request_body(group_info_data, access_token, client_secret)
         create_group_url = '{}/Groups'.format(CORE_BASE_URL)
@@ -170,7 +171,7 @@ def create_group(entity_id, access_token):
                 member_info = csv.DictReader(f, delimiter='\t')
             for member in member_info:
                 member_type = member.get('type')
-                if member_type == 'member':
+                if member_type == 'user':
                     # Get the user information from mAP Core
                     time_stamp = str(time.time())
                     signature = generate_signature(access_token, time_stamp, client_secret)
@@ -259,21 +260,7 @@ def create_group(entity_id, access_token):
         service = management_info.get('service')
         service_list = []
         if service:
-            split_service = service.split(',')
-            for service_name in split_service:
-                time_stamp = str(time.time())
-                signature = generate_signature(access_token, time_stamp, client_secret)
-                get_services_params = {
-                    'filter': 'serviceName eq "{}"'.format(service_name),
-                    'time_stamp': time_stamp,
-                    'signature': signature
-                }
-                get_services_url = '{}/Services?{}'.format(CORE_BASE_URL, urlencode(get_services_params))
-                response = requests.get(get_services_url, headers=headers)
-                response.raise_for_status()
-                response_json = response.json()
-                if response_json.get('totalResults') != 0:
-                    service_list.append({'value': response_json.get('Resources')[0].get('id')})
+            service_list = [{'value': service}]
         
         # Update the group information
         target_group_resource['members'] = members
@@ -284,8 +271,8 @@ def create_group(entity_id, access_token):
         response = requests.put(update_group_url, data=data, headers=headers)
         response.raise_for_status()
     except Exception as ex:
-        if redis.get(MANAGEMENT_INFO_SUFFIX):
-            redis.delete(MANAGEMENT_INFO_SUFFIX)
+        if redis.get(replaced_entity_id + MANAGEMENT_INFO_SUFFIX):
+            redis.delete(replaced_entity_id + MANAGEMENT_INFO_SUFFIX)
         redis.set(replaced_entity_id + CREATE_GROUP_ERR_SUFFIX, str(ex))
         raise ex
     finally:
