@@ -11,7 +11,7 @@ from group_management.utils import get_authorization, set_management_info
 # Set up the argument parser
 parser = argparse.ArgumentParser()
 parser.add_argument('-e', '--entity-id', required=True, help='Entity ID')
-parser.add_argument('-g', '--group-info', required=True, help='Group information Path')
+parser.add_argument('-g', '--group-info', required=True, help='Group information')
 parser.add_argument('-s', '--service', required=True, help='Service ID')
 parser.add_argument('-m', '--member-info', help='Member information Path')
 

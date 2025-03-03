@@ -386,9 +386,7 @@ def reset_redis(entity_id):
     Args:
         entity_id (str): Entity ID
     """
-    # Connect to Redis
-    if not redis:
-        redis = RedisConnection().connection(MANAGEMENT_DB)
+    redis = RedisConnection().connection(MANAGEMENT_DB)
     # Delete the keys in Redis
     replaced_entity_id = process_entity_id(entity_id)
     redis.delete(entity_id)
