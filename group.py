@@ -1,12 +1,13 @@
 import argparse
 import json
-import requests
 import subprocess
 import sys
 import time
 
+import requests
 from group_management.config import HOST_NAME
 from group_management.utils import get_authorization, set_management_info
+
 
 def main(entity_id, group_info, service, member_info):
     """Group management main function
@@ -52,7 +53,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-e', '--entity-id', required=True, help='Entity ID')
     parser.add_argument('-g', '--group-info', required=True, help='Group information')
-    parser.add_argument('-s', '--service', required=True, help='Service ID')
+    parser.add_argument('-s', '--service', help='Service ID')
     parser.add_argument('-m', '--member-info', help='Member information Path')
 
     # Parse the arguments

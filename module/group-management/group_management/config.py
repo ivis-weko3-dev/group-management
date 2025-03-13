@@ -7,7 +7,7 @@ REDIRECT_URL='https://' + HOST_NAME + '/group-management/create'
 
 # redis config
 CACHE_TYPE = 'redis'
-REDIS_HOST = 'localhost'
+REDIS_HOST = 'redis'
 REDIS_URL = 'redis://' + REDIS_HOST + ':6379/'
 REDIS_SENTINEL_MASTER = 'mymaster'
 REDIS_SENTINELS = [("sentinel-service.re","26379")]
@@ -21,7 +21,7 @@ CREATE_GROUP_SUFFIX='_create_group'
 CREATE_GROUP_ERR_SUFFIX='_create_group_err'
 
 USER_AUTHORIZATION={
-    'member': 1,
-    'admin': 2,
-    'member_admin': 3
+    'member': '1',
+    'admin': '2',
+    'member_admin': '3'
 }

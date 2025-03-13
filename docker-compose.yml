@@ -22,7 +22,3 @@ services:
         target: /code
     links:
       - redis
-    deploy:
-      resources:
-        limits:
-          memory: 100m
