@@ -1,0 +1,7 @@
+celery
+flask
+mock
+pytest-mock
+redis
+requests
+-e ../group-management

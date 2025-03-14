@@ -1,0 +1,6 @@
+type	name	email	eppn	auth	order
+user	testuser1	testuser1@example.org	testuser1-eppn	1	
+user	testuser2	testuser2@example.org	testuser2-eppn	2	
+user	testuser3	testuser3@example.org	testuser3-eppn	3	
+group	testgroup1				higher
+group	testgroup2				lower
