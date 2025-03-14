@@ -1,6 +1,7 @@
 import csv
 import hashlib
 import json
+import os
 import time
 from urllib.parse import urlencode, urlparse
 
@@ -19,6 +20,7 @@ from .config import (
     KEY_FILE,
     MANAGEMENT_DB,
     MANAGEMENT_INFO_SUFFIX,
+    MEMBER_INFO_HEADERS,
     REDIRECT_URL,
     USER_AUTHORIZATION,
 )
@@ -204,8 +206,12 @@ def create_group(entity_id, access_token):
         administrators = []
         member_info_file = management_info.get('member_info')
         if member_info_file:
+            if not os.path.exists(member_info_file):
+                raise Exception('Member information file is not found')
             with open(member_info_file, 'r') as f:
                 member_info = csv.DictReader(f, delimiter='\t')
+                if member_info.fieldnames != current_app.config.get("MEMBER_INFO_HEADERS", MEMBER_INFO_HEADERS):
+                    raise Exception('Member information file format is invalid')
                 for member in member_info:
                     member_type = member.get('type')
                     if member_type == 'user':

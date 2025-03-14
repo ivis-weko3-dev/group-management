@@ -20,6 +20,7 @@ CLIENT_CERT_SUFFIX='_client_cert'
 CREATE_GROUP_SUFFIX='_create_group'
 CREATE_GROUP_ERR_SUFFIX='_create_group_err'
 
+MEMBER_INFO_HEADERS=['type', 'name', 'email', 'eppn', 'auth', 'order']
 USER_AUTHORIZATION={
     'member': '1',
     'admin': '2',

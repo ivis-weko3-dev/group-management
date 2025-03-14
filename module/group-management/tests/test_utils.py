@@ -420,6 +420,36 @@ def test_create_group(app, redis_connect, mock_users_api, mock_groups_api, mocke
         assert redis_connect.keys(management_info_key) == []
         assert redis_connect.get(create_group_key).decode() == str(ex.value)
 
+    # Member information file is not found
+    with app.test_request_context():
+        # Clear Redis
+        redis_connect.delete(management_info_key)
+        redis_connect.delete(create_group_err_key)
+        redis_connect.delete(create_group_key)
+        management_info_val = management_info_val_template.copy()
+        management_info_val["member_info"] = "tests/member_mock_data/not_found.tsv"
+        redis_connect.set(management_info_key, json.dumps(management_info_val))
+        with pytest.raises(Exception) as ex:
+            with patch("requests.post"):
+                create_group(entity_id, access_token)
+        assert redis_connect.keys(management_info_key) == []
+        assert redis_connect.get(create_group_key).decode() == str(ex.value)
+
+    # Member information file is invalid
+    with app.test_request_context():
+        # Clear Redis
+        redis_connect.delete(management_info_key)
+        redis_connect.delete(create_group_err_key)
+        redis_connect.delete(create_group_key)
+        management_info_val = management_info_val_template.copy()
+        management_info_val["member_info"] = "tests/member_mock_data/member_info_pattern1_csv.tsv"
+        redis_connect.set(management_info_key, json.dumps(management_info_val))
+        with pytest.raises(Exception) as ex:
+            with patch("requests.post"):
+                create_group(entity_id, access_token)
+        assert redis_connect.keys(management_info_key) == []
+        assert redis_connect.get(create_group_key).decode() == str(ex.value)
+
 def test_process_entity_id():
     # process entity id
     actual = process_entity_id("https://test-entity.org")
