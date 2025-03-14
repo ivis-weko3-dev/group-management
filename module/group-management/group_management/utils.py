@@ -188,6 +188,7 @@ def create_group(entity_id, access_token):
         # Get the group information to be created
         group_info = management_info.get('group_info')
         group_info_data = {
+            "externalID": group_info.get('id'),
             'displayName': group_info.get('name'),
             'description': group_info.get('description'),
             'public': group_info.get('public')

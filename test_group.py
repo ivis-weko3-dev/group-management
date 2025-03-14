@@ -30,6 +30,7 @@ def test_main(app, redis_connect, capsys):
     }
 
     group_info = {
+        "id": "jc_test_groups_test",
         "name": "test_group",
         "description": "test_description",
         "public": True,
@@ -37,7 +38,7 @@ def test_main(app, redis_connect, capsys):
     service = "service_id"
     member_info = "module/group-management/tests/member_mock_data/member_info.tsv"
 
-    # Test case 63: Test main function success
+    # Test main function success
     with app.test_request_context():
         reset_test_cache(redis_connect, entity_id, cert_key, management_info_key, error_key, create_group_key)
         with patch("group.get_authorization", return_value=get_authorization_success_return_value):
@@ -51,7 +52,7 @@ def test_main(app, redis_connect, capsys):
                     captured = capsys.readouterr()
                     assert captured.out == "Group created successfully\n"
     
-    # Test case 64: Test main function authorization error
+    # Test main function authorization error
     with app.test_request_context():
         reset_test_cache(redis_connect, entity_id, cert_key, management_info_key, error_key, create_group_key)
         with patch("group.get_authorization", return_value={"result": "Error", "value": "Authorization error"}):
@@ -59,20 +60,37 @@ def test_main(app, redis_connect, capsys):
                 main(entity_id, json.dumps(group_info), service, member_info)
                 sysExitInfo.value.code == "Authorization error"
 
-    # Test case 65: Test main function wait create group task
+    # Test main function wait create group task
     with app.test_request_context():
         reset_test_cache(redis_connect, entity_id, cert_key, management_info_key, error_key, create_group_key)
         with patch("group.get_authorization", return_value=get_authorization_success_return_value):
             with patch("group.subprocess.Popen"):
                 with patch("group.requests.get") as getMockClient:
-                    response1 = requests.models.Response()
-                    response1.status_code = 200
-                    response1.json = Mock(return_value={"create_status": True, "error": ""})
+                    response = requests.models.Response()
+                    response.status_code = 200
+                    response.json = Mock(return_value={"create_status": True, "error": ""})
                     response2 = requests.models.Response()
                     response2.status_code = 200
                     response2.json = Mock(return_value={"create_status": False, "error": ""})
-                    getMockClient.side_effect = [response1, response2]
+                    getMockClient.side_effect = [response, response2]
                     main(entity_id, json.dumps(group_info), service, member_info)
                     captured = capsys.readouterr()
                     assert captured.out == "Group created successfully\n"
                     assert getMockClient.call_count == 2
+
+    # Test main function create group error
+    with app.test_request_context():
+        reset_test_cache(redis_connect, entity_id, cert_key, management_info_key, error_key, create_group_key)
+        with patch("group.get_authorization", return_value=get_authorization_success_return_value):
+            with patch("group.subprocess.Popen"):
+                with patch("group.requests.get") as getMockClient:
+                    response = requests.models.Response()
+                    response.status_code = 200
+                    response.json = Mock(return_value={"create_status": False, "error": "Test Error."})
+                    getMockClient.side_effect = [response]
+                    try:
+                        main(entity_id, json.dumps(group_info), service, member_info)
+                        assert False
+                    except SystemExit as e:
+                        assert e.code == "Test Error."
+                        assert getMockClient.call_count == 1

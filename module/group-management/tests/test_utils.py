@@ -130,6 +130,7 @@ def test_set_management_info(app, redis_connect, mocker):
     management_info_key = "test_entity_org" + app.config.get("MANAGEMENT_INFO_SUFFIX")
     management_info_val = {
         "group_info": {
+            "id": "jc_test_groups_test",
             "name": "test_group",
             "description": "test_description",
             "public": True
@@ -237,6 +238,7 @@ def test_create_group(app, redis_connect, mock_users_api, mock_groups_api, mocke
     service_name = "test_service"
     management_info_val_template = {
         "group_info": {
+            "id": "jc_test_groups_test",
             "name": "test_group",
             "description": "test_description",
             "public": True
@@ -254,6 +256,7 @@ def test_create_group(app, redis_connect, mock_users_api, mock_groups_api, mocke
         "itemPerPage": 10,
         "Resources": [{
             "id": group_id,
+            "externalId": "jc_test_groups_test",
             "displayName": "test_group",
             "public": True,
             "description": "test_description",
@@ -461,6 +464,7 @@ def test_process_entity_id():
 
 def test_generate_request_body(app):
     data = {
+        "externalId": "jc_test_groups_test",
         "displayName": "test_group",
         "description": "test_description",
         "public": True
@@ -481,6 +485,7 @@ def test_generate_request_body(app):
                         "signature": mock_signature_value
                     },
                     "parameter": {
+                        "externalId": "jc_test_groups_test",
                         "displayName": "test_group",
                         "description": "test_description",
                         "public": True
