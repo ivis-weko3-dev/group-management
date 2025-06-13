@@ -7,7 +7,6 @@ from urllib.parse import urlencode, urlparse
 
 import requests
 from celery.result import AsyncResult
-from flask import current_app
 from requests.auth import HTTPBasicAuth
 
 from .config import (
@@ -55,7 +54,7 @@ def get_authorization(entity_id):
         redis.set(entity_id, '')
         # Get the client certificate
         replaced_entity_id = process_entity_id(entity_id)
-        cert_key = replaced_entity_id + current_app.config.get("CLIENT_CERT_SUFFIX",CLIENT_CERT_SUFFIX) 
+        cert_key = replaced_entity_id + CLIENT_CERT_SUFFIX
         cert_val = redis.get(cert_key)
         cert_dict = {}
         if cert_val:
@@ -106,8 +105,7 @@ def set_management_info(entity_id, info):
         redis = RedisConnection().connection(MANAGEMENT_DB)
         # Save the group creation information to Redis
         replaced_entity_id = process_entity_id(entity_id)
-        management_info_key = replaced_entity_id + \
-            current_app.config.get("MANAGEMENT_INFO_SUFFIX", MANAGEMENT_INFO_SUFFIX)
+        management_info_key = replaced_entity_id + MANAGEMENT_INFO_SUFFIX
         redis.set(management_info_key, json.dumps(info))
     except Exception as ex:
         if redis.keys(entity_id):
@@ -131,8 +129,7 @@ def get_access_token(entity_id, authorization_code):
         redis = RedisConnection().connection(MANAGEMENT_DB)
         # Get the client certificate
         replaced_entity_id = process_entity_id(entity_id)
-        cert_key = replaced_entity_id + \
-            current_app.config.get("CLIENT_CERT_SUFFIX",CLIENT_CERT_SUFFIX) 
+        cert_key = replaced_entity_id + CLIENT_CERT_SUFFIX
         cert_val = redis.get(cert_key)
         if not cert_val:
             raise Exception('Client certificate not found')
@@ -149,12 +146,10 @@ def get_access_token(entity_id, authorization_code):
         response_json = response.json()
         return response_json.get('access_token')
     except Exception as ex:
-        management_info_key = replaced_entity_id + \
-            current_app.config.get("MANAGEMENT_INFO_SUFFIX", MANAGEMENT_INFO_SUFFIX)
+        management_info_key = replaced_entity_id + MANAGEMENT_INFO_SUFFIX
         if redis.get(management_info_key):
             redis.delete(management_info_key)
-        create_group_error_key = replaced_entity_id + \
-            current_app.config.get("CREATE_GROUP_ERR_SUFFIX", CREATE_GROUP_ERR_SUFFIX)
+        create_group_error_key = replaced_entity_id + CREATE_GROUP_ERR_SUFFIX
         redis.set(create_group_error_key, str(ex))
         raise ex
     finally:
@@ -172,14 +167,12 @@ def create_group(entity_id, access_token):
         redis = RedisConnection().connection(MANAGEMENT_DB)
         # Get the client certificate
         replaced_entity_id = process_entity_id(entity_id)
-        management_info_key = replaced_entity_id + \
-            current_app.config.get("MANAGEMENT_INFO_SUFFIX", MANAGEMENT_INFO_SUFFIX)
+        management_info_key = replaced_entity_id + MANAGEMENT_INFO_SUFFIX
         management_val = redis.get(management_info_key)
         if not management_val:
             raise Exception('Group creation information not found')
         management_info = json.loads(management_val.decode())
-        client_cert_key = replaced_entity_id + \
-            current_app.config.get("CLIENT_CERT_SUFFIX", CLIENT_CERT_SUFFIX)
+        client_cert_key = replaced_entity_id + CLIENT_CERT_SUFFIX
         client_cert_val = redis.get(client_cert_key)
         if not client_cert_val:
             raise Exception('Client certificate not found')
@@ -188,17 +181,17 @@ def create_group(entity_id, access_token):
         # Get the group information to be created
         group_info = management_info.get('group_info')
         group_info_data = {
-            "externalID": group_info.get('id'),
             'displayName': group_info.get('name'),
             'description': group_info.get('description'),
-            'public': group_info.get('public')
+            'public': group_info.get('public'),
+            'services': [{'value': management_info.get('service_id')}]
         }
         data = generate_request_body(group_info_data, access_token, client_secret)
         create_group_url = '{}/Groups'.format(CORE_BASE_URL)
         headers = {
             'Authorization': 'Bearer {}'.format(access_token)
         }
-        response = requests.post(create_group_url, data=data, headers=headers)
+        response = requests.post(create_group_url, json=data, headers=headers)
         response.raise_for_status()
         target_group_resource = response.json().get('Resources')[0]
 
@@ -211,13 +204,13 @@ def create_group(entity_id, access_token):
                 raise Exception('Member information file is not found')
             with open(member_info_file, 'r') as f:
                 member_info = csv.DictReader(f, delimiter='\t')
-                if member_info.fieldnames != current_app.config.get("MEMBER_INFO_HEADERS", MEMBER_INFO_HEADERS):
+                if member_info.fieldnames != MEMBER_INFO_HEADERS:
                     raise Exception('Member information file format is invalid')
                 for member in member_info:
                     member_type = member.get('type')
                     if member_type == 'user':
                         # Get the user information from mAP Core
-                        time_stamp = str(time.time())
+                        time_stamp = str(int(time.time()))
                         signature = generate_signature(access_token, time_stamp, client_secret)
                         eppn = member.get('eppn')
                         get_users_params = {
@@ -320,10 +313,8 @@ def create_group(entity_id, access_token):
         response = requests.put(update_group_url, data=data, headers=headers)
         response.raise_for_status()
     except Exception as ex:
-        management_info_key = replaced_entity_id + \
-            current_app.config.get("MANAGEMENT_INFO_SUFFIX", MANAGEMENT_INFO_SUFFIX)
-        create_group_key = replaced_entity_id + \
-            current_app.config.get("CREATE_GROUP_SUFFIX", CREATE_GROUP_SUFFIX)
+        management_info_key = replaced_entity_id + MANAGEMENT_INFO_SUFFIX
+        create_group_key = replaced_entity_id + CREATE_GROUP_SUFFIX
         if redis.get(management_info_key):
             redis.delete(management_info_key)
         redis.set(create_group_key, str(ex))
@@ -357,15 +348,15 @@ def generate_request_body(data, access_token, client_secret):
         dict: Request body
     """
     # Generate the request body
-    time_stamp = str(time.time())
+    time_stamp = str(int(time.time()))
     signature = generate_signature(access_token, time_stamp, client_secret)
     generated_data = {
         'request': {
             'time_stamp': time_stamp,
             'signature': signature
         },
-        'parameter': data
     }
+    generated_data.update(data)
     return generated_data
 
 def generate_signature(access_token, time_stamp, client_secret):
@@ -420,8 +411,7 @@ def get_task_status(key, entity_id):
         # Get the task status from Redis
         replaced_entity_id = process_entity_id(entity_id)
         task_id = redis.get(replaced_entity_id + key)
-        error_key = replaced_entity_id + \
-                current_app.config.get("CREATE_GROUP_ERR_SUFFIX", CREATE_GROUP_ERR_SUFFIX)
+        error_key = replaced_entity_id + CREATE_GROUP_ERR_SUFFIX
         if task_id:
             result = AsyncResult(task_id)
             status_cond = result.successful() or result.failed() or result.state == 'REVOKED'
@@ -447,12 +437,9 @@ def reset_redis(entity_id):
     redis = RedisConnection().connection(MANAGEMENT_DB)
     # Delete the keys in Redis
     replaced_entity_id = process_entity_id(entity_id)
-    management_info_key = replaced_entity_id + \
-        current_app.config.get("MANAGEMENT_INFO_SUFFIX", MANAGEMENT_INFO_SUFFIX)
-    create_group_key = replaced_entity_id + \
-        current_app.config.get("CREATE_GROUP_SUFFIX", CREATE_GROUP_SUFFIX)
-    create_group_error_key = replaced_entity_id + \
-        current_app.config.get("CREATE_GROUP_ERR_SUFFIX", CREATE_GROUP_ERR_SUFFIX)
+    management_info_key = replaced_entity_id + MANAGEMENT_INFO_SUFFIX
+    create_group_key = replaced_entity_id + CREATE_GROUP_SUFFIX
+    create_group_error_key = replaced_entity_id + CREATE_GROUP_ERR_SUFFIX
     redis.delete(entity_id)
     redis.delete(management_info_key)
     redis.delete(create_group_key)
