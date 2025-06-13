@@ -1,8 +1,7 @@
-import json
-
 from flask import Blueprint, current_app, jsonify, request
 
 from .config import CREATE_GROUP_SUFFIX
+from .mng_celery import app as celery_app
 from .tasks import create_group_task
 from .utils import get_task_status, reset_redis, set_task_id
 
@@ -12,7 +11,7 @@ blueprint = Blueprint(
     url_prefix='/group-management'
 )
 
-@blueprint.route('/create', methods=['POST'])
+@blueprint.route('/create', methods=['GET'])
 def create_group():
     """Create a group
     
@@ -21,7 +20,7 @@ def create_group():
             code (int): Response code
             message (str): Response message
     """
-    data = json.loads(request.data.decode('utf-8'))
+    data = request.args.to_dict()
     create_task = create_group_task.apply_async(args=(data.get('state'), data.get('code')))
     create_group_suffix = current_app.config.get('CREATE_GROUP_SUFFIX', CREATE_GROUP_SUFFIX)
     set_task_id(create_group_suffix, create_task.id, data.get('state'))
@@ -45,4 +44,3 @@ def get_status():
     if not result.get('create_status'):
         reset_redis(request.args.get('entity_id'))
     return jsonify(result)
-    
