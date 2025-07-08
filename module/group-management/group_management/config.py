@@ -26,3 +26,5 @@ USER_AUTHORIZATION={
     'admin': '2',
     'member_admin': '3'
 }
+
+VERIFY_TLS_CLIENT_CERT = False

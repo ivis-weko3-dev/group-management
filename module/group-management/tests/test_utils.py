@@ -17,6 +17,7 @@ from group_management.utils import (
     reset_redis,
     set_management_info,
     set_task_id,
+    validate_member_info
 )
 
 
@@ -27,6 +28,7 @@ def create_mock_response(status_code, response_json):
     return response
 
 
+# .tox/c1/bin/pytest --cov=group_management tests/test_utils.py::test_get_authorization -vv -s --cov-branch --cov-report=term --basetemp=/group-management/modules/group-management/.tox/c1/tmp
 def test_get_authorization(app, redis_connect):
     entity_id = "https://test-entity.org"
     cert_key = "test_entity_org" + app.config.get("CLIENT_CERT_SUFFIX")
@@ -97,7 +99,6 @@ def test_get_authorization(app, redis_connect):
             assert str(e) == "Redis error"
             mockRedisDelete.assert_not_called()
 
-
     # Redis set() error
     with app.test_request_context():
         # Clear Redis
@@ -123,8 +124,21 @@ def test_get_authorization(app, redis_connect):
                 get_authorization(entity_id)
             assert str(e) == "Redis set error"
             mockRedisDelete.assert_not_called()
+    
+    # connection error
+    with app.test_request_context():
+        # Clear Redis
+        redis_connect.delete(cert_key)
+        redis_connect.delete(entity_id)
+        with pytest.raises(Exception) as e:
+            mockRedisDelete = patch("redis.client.Redis.delete")
+            with patch("group_management.utils.RedisConnection", side_effect=Exception("Redis connection error")):
+                get_authorization(entity_id)
+            assert str(e.value) == "Redis connection error"
+            mockRedisDelete.assert_not_called()
 
 
+# .tox/c1/bin/pytest --cov=group_management tests/test_utils.py::test_set_management_info -vv -s --cov-branch --cov-report=term --basetemp=/group-management/modules/group-management/.tox/c1/tmp
 def test_set_management_info(app, redis_connect, mocker):
     entity_id = "https://test-entity.org"
     management_info_key = "test_entity_org" + app.config.get("MANAGEMENT_INFO_SUFFIX")
@@ -172,6 +186,8 @@ def test_set_management_info(app, redis_connect, mocker):
             assert str(e.value) == "Redis set error"
             mockRedisDelete.assert_called_once()
 
+
+# .tox/c1/bin/pytest --cov=group_management tests/test_utils.py::test_get_access_token -vv -s --cov-branch --cov-report=term --basetemp=/group-management/modules/group-management/.tox/c1/tmp
 def test_get_access_token(app, redis_connect, mocker):
     entity_id = "https://test-entity.org"
     cert_key = "test_entity_org" + app.config.get("CLIENT_CERT_SUFFIX")
@@ -231,6 +247,7 @@ def test_get_access_token(app, redis_connect, mocker):
             assert redis_connect.keys(error_key)
 
 
+# .tox/c1/bin/pytest --cov=group_management tests/test_utils.py::test_create_group -vv -s --cov-branch --cov-report=term --basetemp=/group-management/modules/group-management/.tox/c1/tmp
 def test_create_group(app, redis_connect, mock_users_api, mock_groups_api, mocker):
     entity_id = "https://test-entity.org"
     management_info_key = "test_entity_org" + \
@@ -274,7 +291,9 @@ def test_create_group(app, redis_connect, mock_users_api, mock_groups_api, mocke
         "client_id": "test_client",
         "client_secret": "test_secret"
     }
+    client_cert_key = "test_entity_org" + app.config.get("CLIENT_CERT_SUFFIX")
     mock_json_get = mock_users_api + mock_groups_api
+    redis_connect.set(client_cert_key, json.dumps(cert_val))
 
     # create group success
     with app.test_request_context():
@@ -285,21 +304,21 @@ def test_create_group(app, redis_connect, mock_users_api, mock_groups_api, mocke
         management_info_val = management_info_val_template.copy()
         management_info_val["member_info"] = "tests/member_mock_data/member_info_pattern1.tsv"
         redis_connect.set(management_info_key, json.dumps(management_info_val))
-        with patch("requests.post") as mockPostClient:
+        with patch("requests.post") as mock_post_client:
             mock_post_response = create_mock_response(200, create_group_url_response)
-            mockPostClient.return_value = mock_post_response
-            with patch("requests.get") as mockGetClient:
+            mock_post_client.return_value = mock_post_response
+            with patch("requests.get") as mock_get_client:
                 get_responses = [
                     create_mock_response(200, get_mock_response)
                     for get_mock_response in mock_json_get
                 ]
-                mockGetClient.side_effect = get_responses
+                mock_get_client.side_effect = get_responses
                 with patch("requests.put",
                            return_value=create_mock_response(200, {})) as mockPutClient:
                     create_group(entity_id, access_token)
                     mockPutClient.call_count == 3
             # called only create-group
-            mockPostClient.assert_called_once()
+            mock_post_client.assert_called_once()
             
     # User not exists
     with app.test_request_context():
@@ -310,17 +329,13 @@ def test_create_group(app, redis_connect, mock_users_api, mock_groups_api, mocke
         management_info_val = management_info_val_template.copy()
         management_info_val["member_info"] = "tests/member_mock_data/member_info_pattern2.tsv"
         redis_connect.set(management_info_key, json.dumps(management_info_val))
-        with patch("requests.post") as mockPostClient:
+        with patch("requests.post") as mock_post_client:
             mock_post_response = create_mock_response(200, create_group_url_response)
-            mockPostClient.return_value = mock_post_response
-            with patch("requests.get") as mockGetClient:
-                mockGetClient.return_value = create_mock_response(200, {"totalResults": 0})
-                with patch("requests.put",
-                           return_value=create_mock_response(200, {})) as mockPutClient:
-                    create_group(entity_id, access_token)
-                    # called only update-group
-                    mockPutClient.assert_called_once()
-            mockPostClient.call_count == 4
+            mock_post_client.return_value = mock_post_response
+            with patch("requests.get") as mock_get_client:
+                mock_get_client.return_value = create_mock_response(200, {"totalResults": 0})
+                create_group(entity_id, access_token)
+            mock_post_client.call_count == 4
 
     # create-group API error
     with app.test_request_context():
@@ -332,9 +347,9 @@ def test_create_group(app, redis_connect, mock_users_api, mock_groups_api, mocke
         management_info_val["member_info"] = "tests/member_mock_data/member_info_pattern2.tsv"
         redis_connect.set(management_info_key, json.dumps(management_info_val))
         with pytest.raises(Exception) as ex:
-            with patch("requests.post") as mockPostClient:
-                mock_post_response = create_mock_response(400, {"error": "invalid_request"})
-                mockPostClient.return_value = mock_post_response
+            with patch("requests.get") as mock_get_client:
+                mock_get_response = create_mock_response(400, {"error": "invalid_request"})
+                mock_get_client.return_value = mock_get_response
                 create_group(entity_id, access_token)
         assert redis_connect.keys(management_info_key) == []
         assert redis_connect.get(create_group_key).decode() == str(ex.value)
@@ -356,70 +371,10 @@ def test_create_group(app, redis_connect, mock_users_api, mock_groups_api, mocke
         redis_connect.delete(management_info_key)
         redis_connect.delete(create_group_err_key)
         redis_connect.delete(create_group_key)
-        redis_connect.delete("test_entity_org" + app.config.get("CLIENT_CERT_SUFFIX"))
+        redis_connect.delete(client_cert_key)
         redis_connect.set(management_info_key, json.dumps(management_info_val))
         with pytest.raises(Exception) as ex:
             create_group(entity_id, access_token)
-        assert redis_connect.keys(management_info_key) == []
-        assert redis_connect.get(create_group_key).decode() == str(ex.value)
-    
-    # Member type is invalid
-    with app.test_request_context():
-        # Clear Redis
-        redis_connect.delete(management_info_key)
-        redis_connect.delete(create_group_err_key)
-        redis_connect.delete(create_group_key)
-        management_info_val = management_info_val_template.copy()
-        management_info_val["member_info"] = "tests/member_mock_data/member_info_pattern3.tsv"
-        redis_connect.set(management_info_key, json.dumps(management_info_val))
-        redis_connect.set("test_entity_org" + app.config.get("CLIENT_CERT_SUFFIX"), json.dumps(cert_val))
-        with pytest.raises(Exception) as ex:
-            with patch("requests.post"):
-                create_group(entity_id, access_token)
-        assert redis_connect.keys(management_info_key) == []
-        assert redis_connect.get(create_group_key).decode() == str(ex.value)
-
-    # Authorization level is invalid
-    with app.test_request_context():
-        # Clear Redis
-        redis_connect.delete(management_info_key)
-        redis_connect.delete(create_group_err_key)
-        redis_connect.delete(create_group_key)
-        management_info_val = management_info_val_template.copy()
-        management_info_val["member_info"] = "tests/member_mock_data/member_info_pattern4.tsv"
-        redis_connect.set(management_info_key, json.dumps(management_info_val))
-        redis_connect.set("test_entity_org" + app.config.get("CLIENT_CERT_SUFFIX"), json.dumps(cert_val))
-        with pytest.raises(Exception) as ex:
-            with patch("requests.post"):
-                with patch("requests.get") as mockGetClient:
-                    get_responses = [
-                        create_mock_response(200, get_mock_response)
-                        for get_mock_response in mock_json_get
-                    ]
-                    mockGetClient.side_effect = get_responses
-                    create_group(entity_id, access_token)
-        assert redis_connect.keys(management_info_key) == []
-        assert redis_connect.get(create_group_key).decode() == str(ex.value)
-    
-    # Order is invalid
-    with app.test_request_context():
-        # Clear Redis
-        redis_connect.delete(management_info_key)
-        redis_connect.delete(create_group_err_key)
-        redis_connect.delete(create_group_key)
-        management_info_val = management_info_val_template.copy()
-        management_info_val["member_info"] = "tests/member_mock_data/member_info_pattern5.tsv"
-        redis_connect.set(management_info_key, json.dumps(management_info_val))
-        redis_connect.set("test_entity_org" + app.config.get("CLIENT_CERT_SUFFIX"), json.dumps(cert_val))
-        with pytest.raises(Exception) as ex:
-            with patch("requests.post"):
-                with patch("requests.get") as mockGetClient:
-                    get_responses = [
-                        create_mock_response(200, get_mock_response)
-                        for get_mock_response in mock_json_get
-                    ]
-                    mockGetClient.side_effect = get_responses
-                    create_group(entity_id, access_token)
         assert redis_connect.keys(management_info_key) == []
         assert redis_connect.get(create_group_key).decode() == str(ex.value)
 
@@ -432,6 +387,7 @@ def test_create_group(app, redis_connect, mock_users_api, mock_groups_api, mocke
         management_info_val = management_info_val_template.copy()
         management_info_val["member_info"] = "tests/member_mock_data/not_found.tsv"
         redis_connect.set(management_info_key, json.dumps(management_info_val))
+        redis_connect.set(client_cert_key, json.dumps(cert_val))
         with pytest.raises(Exception) as ex:
             with patch("requests.post"):
                 create_group(entity_id, access_token)
@@ -452,7 +408,91 @@ def test_create_group(app, redis_connect, mock_users_api, mock_groups_api, mocke
                 create_group(entity_id, access_token)
         assert redis_connect.keys(management_info_key) == []
         assert redis_connect.get(create_group_key).decode() == str(ex.value)
+    
+    # Group order is invalid
+    with app.test_request_context():
+        # Clear Redis
+        redis_connect.delete(management_info_key)
+        redis_connect.delete(create_group_err_key)
+        redis_connect.delete(create_group_key)
+        management_info_val = management_info_val_template.copy()
+        management_info_val["member_info"] = "tests/member_mock_data/member_info_invalid_order.tsv"
+        redis_connect.set(management_info_key, json.dumps(management_info_val))
+        with pytest.raises(Exception) as ex:
+            with patch("requests.get") as mock_get_client:
+                mock_get_response = create_mock_response(200, {"totalResults": 1})
+                mock_get_client.return_value = mock_get_response
+                create_group(entity_id, access_token)
+        assert redis_connect.keys(management_info_key) == []
+        assert redis_connect.get(create_group_key).decode() == str(ex.value)
+    
+    # User already exists and group does not exist
+    with app.test_request_context():
+        # Clear Redis
+        redis_connect.delete(management_info_key)
+        redis_connect.delete(create_group_err_key)
+        redis_connect.delete(create_group_key)
+        management_info_val = management_info_val_template.copy()
+        management_info_val["member_info"] = "tests/member_mock_data/member_info_pattern3.tsv"
+        redis_connect.set(management_info_key, json.dumps(management_info_val))
+        with patch('requests.get') as mock_get_client:
+            mock_user_get_response = create_mock_response(200, {"totalResults": 1, "Resources": [{"id": "test_user_id"}]})
+            mock_group_get_response = create_mock_response(200, {"totalResults": 0})
+            mock_get_client.side_effect = [mock_user_get_response, mock_group_get_response]
+            with patch("requests.post") as mock_post_client:
+                mock_post_response = create_mock_response(200, create_group_url_response)
+                mock_post_client.return_value = mock_post_response
+                create_group(entity_id, access_token)
+                mock_post_client.assert_called_once()
+                assert mock_get_client.call_count == 2
+    
+    # User authorization level is invalid
+    with app.test_request_context():
+        # Clear Redis
+        redis_connect.delete(management_info_key)
+        redis_connect.delete(create_group_err_key)
+        redis_connect.delete(create_group_key)
+        management_info_val = management_info_val_template.copy()
+        management_info_val["member_info"] = "tests/member_mock_data/member_info_invalid_auth.tsv"
+        redis_connect.set(management_info_key, json.dumps(management_info_val))
+        with pytest.raises(Exception) as ex:
+            with patch("requests.get") as mock_get_client:
+                mock_get_response = create_mock_response(200, {"totalResults": 1, "Resources": [{"id": "test_user_id"}]})
+                mock_get_client.return_value = mock_get_response
+                create_group(entity_id, access_token)
+        assert redis_connect.keys(management_info_key) == []
+        assert redis_connect.get(create_group_key).decode() == str(ex.value)
+    
+    # Member type is invalid
+    with app.test_request_context():
+        # Clear Redis
+        redis_connect.delete(management_info_key)
+        redis_connect.delete(create_group_err_key)
+        redis_connect.delete(create_group_key)
+        management_info_val = management_info_val_template.copy()
+        management_info_val["member_info"] = "tests/member_mock_data/member_info_invalid_type.tsv"
+        redis_connect.set(management_info_key, json.dumps(management_info_val))
+        with pytest.raises(Exception) as ex:
+            create_group(entity_id, access_token)
+        assert redis_connect.keys(management_info_key) == []
+        assert redis_connect.get(create_group_key).decode() == str(ex.value)
+    
+    # member_info is not set
+    with app.test_request_context():
+        # Clear Redis
+        redis_connect.delete(management_info_key)
+        redis_connect.delete(create_group_err_key)
+        redis_connect.delete(create_group_key)
+        management_info_val = management_info_val_template.copy()
+        management_info_val["member_info"] = ""
+        redis_connect.set(management_info_key, json.dumps(management_info_val))
+        with pytest.raises(Exception) as ex:
+            create_group(entity_id, access_token)
+        assert redis_connect.keys(management_info_key) == []
+        assert redis_connect.get(create_group_key).decode() == str(ex.value)
 
+
+# .tox/c1/bin/pytest --cov=group_management tests/test_utils.py::test_process_entity_id -vv -s --cov-branch --cov-report=term --basetemp=/group-management/modules/group-management/.tox/c1/tmp
 def test_process_entity_id():
     # process entity id
     actual = process_entity_id("https://test-entity.org")
@@ -462,6 +502,8 @@ def test_process_entity_id():
     actual = process_entity_id("https://test_entity_org/test")
     assert actual == "test_entity_org"
 
+
+# .tox/c1/bin/pytest --cov=group_management tests/test_utils.py::test_generate_request_body -vv -s --cov-branch --cov-report=term --basetemp=/group-management/modules/group-management/.tox/c1/tmp
 def test_generate_request_body(app):
     data = {
         "externalId": "jc_test_groups_test",
@@ -481,17 +523,17 @@ def test_generate_request_body(app):
                 actual = generate_request_body(data, access_token, client_secret)
                 assert actual == {
                     "request": {
-                        "time_stamp": str(current_time),
+                        "time_stamp": str(int(current_time)),
                         "signature": mock_signature_value
                     },
-                    "parameter": {
-                        "externalId": "jc_test_groups_test",
-                        "displayName": "test_group",
-                        "description": "test_description",
-                        "public": True
-                    }
+                    "externalId": "jc_test_groups_test",
+                    "displayName": "test_group",
+                    "description": "test_description",
+                    "public": True
                 }
-                
+
+
+# .tox/c1/bin/pytest --cov=group_management tests/test_utils.py::test_generate_signature -vv -s --cov-branch --cov-report=term --basetemp=/group-management/modules/group-management/.tox/c1/tmp
 def test_generate_signature(app):
     access_token = "test_token"
     time_stamp = str(1234567890.1234567)
@@ -503,6 +545,8 @@ def test_generate_signature(app):
         expected = hashlib.sha256(f"{client_secret}{access_token}{time_stamp}".encode()).hexdigest()
         assert actual == expected
 
+
+# .tox/c1/bin/pytest --cov=group_management tests/test_utils.py::test_set_task_id -vv -s --cov-branch --cov-report=term --basetemp=/group-management/modules/group-management/.tox/c1/tmp
 def test_set_task_id(app, redis_connect):
     entity_id = "https://test-entity.org"
     task_id = "1234567890"
@@ -517,6 +561,51 @@ def test_set_task_id(app, redis_connect):
         actual = redis_connect.get(target_key)
         assert actual.decode() == task_id
 
+
+# .tox/c1/bin/pytest --cov=group_management tests/test_utils.py::test_validate_member_info -vv -s --cov-branch --cov-report=term --basetemp=/group-management/modules/group-management/.tox/c1/tmp
+def test_validate_member_info():
+    # valid member info
+    valid_member_info = "tests/member_mock_data/member_info_pattern1.tsv"
+    assert validate_member_info(valid_member_info) == []
+
+    # invalid member info (not found)
+    invalid_member_info_not_found = "tests/member_mock_data/not_found.tsv"
+    assert validate_member_info(invalid_member_info_not_found) == ['Member information file is not found']
+
+    # invalid header
+    invalid_member_info_header = "tests/member_mock_data/member_info_invalid_header.tsv"
+    assert validate_member_info(invalid_member_info_header) == ['Member information file format is invalid']
+
+    # invalid user name
+    invalid_member_info_user_name = "tests/member_mock_data/member_info_invalid_user_name.tsv"
+    assert validate_member_info(invalid_member_info_user_name) == ['User name is required at line 1']
+
+    # invalid user email
+    invalid_member_info_invalid_email = "tests/member_mock_data/member_info_invalid_email.tsv"
+    assert validate_member_info(invalid_member_info_invalid_email) == ['User email is required at line 1']
+
+    # invalid user eppn
+    invalid_member_info_invalid_eppn = "tests/member_mock_data/member_info_invalid_eppn.tsv"
+    assert validate_member_info(invalid_member_info_invalid_eppn) == ['User eppn is required at line 1']
+
+    # invalid auth
+    invalid_member_info_auth = "tests/member_mock_data/member_info_invalid_auth.tsv"
+    assert validate_member_info(invalid_member_info_auth) == ['User authorization level is invalid at line 1: 4', 'At least one administrator is required']
+
+    # invalid group name
+    invalid_member_info_group_name = "tests/member_mock_data/member_info_invalid_group_name.tsv"
+    assert validate_member_info(invalid_member_info_group_name) == ['Group name is required at line 1', 'At least one administrator is required']
+
+    # invalid order
+    invalid_member_info_order = "tests/member_mock_data/member_info_invalid_order.tsv"
+    assert validate_member_info(invalid_member_info_order) == ['Group order is invalid at line 1: middle', 'At least one administrator is required']
+
+    # invalid type
+    invalid_member_info_type = "tests/member_mock_data/member_info_invalid_type.tsv"
+    assert validate_member_info(invalid_member_info_type) == ['Member type is invalid at line 1: member', 'At least one administrator is required']
+
+
+# .tox/c1/bin/pytest --cov=group_management tests/test_utils.py::test_get_task_status -vv -s --cov-branch --cov-report=term --basetemp=/group-management/modules/group-management/.tox/c1/tmp
 def test_get_task_status(app, redis_connect):
     entity_id = "https://test-entity.org"
     task_id = "1234567890"
@@ -538,7 +627,7 @@ def test_get_task_status(app, redis_connect):
     
     # status is STARTED
     with app.test_request_context():
-        # AsyncResultのモックを作成
+        # create AsyncResult mock
         mock_async_result = MagicMock()
         mock_async_result.id = 1
         mock_async_result.status = "STARTED"
@@ -558,7 +647,7 @@ def test_get_task_status(app, redis_connect):
             
     # status is SUCCESS
     with app.test_request_context():
-        # AsyncResultのモックを作成
+        # create AsyncResult mock
         mock_async_result = MagicMock()
         mock_async_result.id = 1
         mock_async_result.status = "SUCCESS"
@@ -578,7 +667,7 @@ def test_get_task_status(app, redis_connect):
             
     # status is FAILURE
     with app.test_request_context():
-        # AsyncResultのモックを作成
+        # create AsyncResult mock
         mock_async_result = MagicMock()
         mock_async_result.id = 1
         mock_async_result.status = "FAILURE"
@@ -599,7 +688,7 @@ def test_get_task_status(app, redis_connect):
 
     # status is REVOKED
     with app.test_request_context():
-        # AsyncResultのモックを作成
+        # create AsyncResult mock
         mock_async_result = MagicMock()
         mock_async_result.id = 1
         mock_async_result.status = "REVOKED"
@@ -630,6 +719,8 @@ def test_get_task_status(app, redis_connect):
                 get_task_status(key, entity_id)
         assert str(e.value) == "Redis get error"
 
+
+# .tox/c1/bin/pytest --cov=group_management tests/test_utils.py::test_reset_redis -vv -s --cov-branch --cov-report=term --basetemp=/group-management/modules/group-management/.tox/c1/tmp
 def test_reset_redis(app, redis_connect):
     entity_id  = "https://test-entity.org"
     management_info_key = "test_entity_org" + app.config.get("MANAGEMENT_INFO_SUFFIX")

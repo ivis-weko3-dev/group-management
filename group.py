@@ -6,7 +6,7 @@ import time
 
 import requests
 from group_management.config import HOST_NAME
-from group_management.utils import get_authorization, set_management_info
+from group_management.utils import get_authorization, set_management_info, validate_member_info
 
 
 def main(entity_id, group_info, service, member_info):
@@ -18,6 +18,15 @@ def main(entity_id, group_info, service, member_info):
         service (str): Service ID
         member_info (str): Member information
     """
+    # Validate the member information
+    if member_info:
+        error_messages = validate_member_info(member_info)
+        if error_messages:
+            print('Error in member information:')
+            for error in error_messages:
+                print(error)
+            sys.exit(1)
+
     management_info = {
         'group_info': json.loads(group_info),
         'service_id': service,
@@ -54,7 +63,7 @@ if __name__ == '__main__':
     parser.add_argument('-e', '--entity-id', required=True, help='Entity ID')
     parser.add_argument('-g', '--group-info', required=True, help='Group information')
     parser.add_argument('-s', '--service', required=True, help='Service ID')
-    parser.add_argument('-m', '--member-info', help='Member information Path')
+    parser.add_argument('-m', '--member-info', required=True, help='Member information Path')
 
     # Parse the arguments
     args = parser.parse_args()

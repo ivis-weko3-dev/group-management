@@ -29,10 +29,10 @@ def base_app(instance_path):
     )
 
     app_.config.update(
-        CLIENT_CERT_SUFFIX = "_test_cert",
-        MANAGEMENT_INFO_SUFFIX = "_test_management",
-        CREATE_GROUP_ERR_SUFFIX = "_test_error",
-        CREATE_GROUP_SUFFIX = "_test_group",
+        CLIENT_CERT_SUFFIX = "_client_cert",
+        MANAGEMENT_INFO_SUFFIX = "_group_management_info",
+        CREATE_GROUP_ERR_SUFFIX = "_create_group_err",
+        CREATE_GROUP_SUFFIX = "_create_group",
         CELERY_ALWAYS_EAGER=True,
         CELERY_CACHE_BACKEND="memory",
         CELERY_EAGER_PROPAGATES_EXCEPTIONS=True,
