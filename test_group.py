@@ -94,3 +94,11 @@ def test_main(app, redis_connect, capsys):
                     except SystemExit as e:
                         assert e.code == "Test Error."
                         assert getMockClient.call_count == 1
+    
+    # member_info has error
+    with app.test_request_context():
+        reset_test_cache(redis_connect, entity_id, cert_key, management_info_key, error_key, create_group_key)
+        with patch('group.validate_member_info', return_value=['Invalid member info']):
+            with pytest.raises(SystemExit) as sysExitInfo:
+                main(entity_id, json.dumps(group_info), service, member_info)
+                assert sysExitInfo.value.code == "Invalid member info"

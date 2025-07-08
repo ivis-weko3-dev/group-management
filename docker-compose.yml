@@ -19,6 +19,6 @@ services:
     volumes:
       - type: bind
         source: .
-        target: /code
+        target: /group-management
     links:
       - redis

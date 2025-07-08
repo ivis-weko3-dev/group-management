@@ -3,7 +3,7 @@ import hashlib
 import json
 import os
 import time
-from urllib.parse import urlencode, urlparse
+from urllib.parse import quote, urlencode, urlparse
 
 import requests
 from celery.result import AsyncResult
@@ -22,6 +22,7 @@ from .config import (
     MEMBER_INFO_HEADERS,
     REDIRECT_URL,
     USER_AUTHORIZATION,
+    VERIFY_TLS_CLIENT_CERT
 )
 from .mng_redis import RedisConnection
 
@@ -67,7 +68,9 @@ def get_authorization(entity_id):
                 'redirect_uri': REDIRECT_URL
             }
             issue_url = '{}/sslauth/issue.php?{}'.format(AUTHORIZATION_BASE_URL, urlencode(issue_params))
-            response = requests.get(issue_url, cert=(CERT_FILE.format(replaced_entity_id), KEY_FILE.format(replaced_entity_id)))
+            response = requests.get(issue_url,
+                                    cert=(CERT_FILE.format(replaced_entity_id), KEY_FILE.format(replaced_entity_id)),
+                                    verify=VERIFY_TLS_CLIENT_CERT)
             response.raise_for_status()
             cert_dict = response.json()
             redis.set(cert_key, json.dumps(cert_dict))
@@ -178,30 +181,19 @@ def create_group(entity_id, access_token):
             raise Exception('Client certificate not found')
         client_cert = json.loads(client_cert_val.decode())
         client_secret = client_cert.get('client_secret')
-        # Get the group information to be created
-        group_info = management_info.get('group_info')
-        group_info_data = {
-            'displayName': group_info.get('name'),
-            'description': group_info.get('description'),
-            'public': group_info.get('public'),
-            'services': [{'value': management_info.get('service_id')}]
-        }
-        data = generate_request_body(group_info_data, access_token, client_secret)
-        create_group_url = '{}/Groups'.format(CORE_BASE_URL)
+
+        # Set the headers for the request
         headers = {
             'Authorization': 'Bearer {}'.format(access_token)
         }
-        response = requests.post(create_group_url, json=data, headers=headers)
-        response.raise_for_status()
-        target_group_resource = response.json().get('Resources')[0]
 
         # Get the group members and administrators
+        member_info_file = management_info.get('member_info')
         members = []
         administrators = []
-        member_info_file = management_info.get('member_info')
+        groups = []
         if member_info_file:
-            if not os.path.exists(member_info_file):
-                raise Exception('Member information file is not found')
+            # Check the member information file format
             with open(member_info_file, 'r') as f:
                 member_info = csv.DictReader(f, delimiter='\t')
                 if member_info.fieldnames != MEMBER_INFO_HEADERS:
@@ -214,14 +206,18 @@ def create_group(entity_id, access_token):
                         signature = generate_signature(access_token, time_stamp, client_secret)
                         eppn = member.get('eppn')
                         get_users_params = {
-                            'filter': 'eduPersonPrincipalNames.eduPersonPrincipalName eq "{}"'.format(eppn),
+                            'filter': 'eduPersonPrincipalNames.value eq "{}"'.format(eppn),
                             'time_stamp': time_stamp,
                             'signature': signature
                         }
-                        get_users_url = '{}/Users?{}'.format(CORE_BASE_URL, urlencode(get_users_params))
+                        get_users_url = '{}/Users?{}'.format(
+                            CORE_BASE_URL,
+                            urlencode(get_users_params, encoding='utf-8', quote_via=quote)
+                        )
                         response = requests.get(get_users_url, headers=headers)
                         response.raise_for_status()
                         response_json = response.json()
+                        user_id = None
                         if response_json.get('totalResults') == 0:
                             # Create a new user if the user does not exist
                             user_data = {
@@ -233,18 +229,22 @@ def create_group(entity_id, access_token):
                                 ],
                                 'eduPersonPrincipalNames': [
                                     {
-                                        'eduPersonPrincipalName': eppn
+                                        'value': eppn
                                     }
                                 ]
                             }
                             data = generate_request_body(user_data, access_token, client_secret)
                             create_user_url = '{}/Users'.format(CORE_BASE_URL)
-                            response = requests.post(create_user_url, data=data, headers=headers)
+                            response = requests.post(create_user_url, json=data, headers=headers)
                             response.raise_for_status()
                             response_json = response.json()
+                            user_id = response_json.get('id')
+                        else:
+                            # Get the user ID if the user exists
+                            user_id = response_json.get('Resources')[0].get('id')
                         user = {
                             'type': 'User',
-                            'value': response_json.get('Resources')[0].get('id')
+                            'value': user_id
                         }
                         user_auth = member.get('auth')
                         # Add the user to the group with the authorization level
@@ -258,10 +258,10 @@ def create_group(entity_id, access_token):
                             user.pop('type')
                             administrators.append(user)
                         else:
-                            raise Exception('Authorization level is invalid')
+                            raise Exception('User authorization level is invalid: {}'.format(user_auth))
                     elif member_type == 'group':
                         # Get the group information from mAP Core
-                        time_stamp = str(time.time())
+                        time_stamp = str(int(time.time()))
                         signature = generate_signature(access_token, time_stamp, client_secret)
                         group_name = member.get('name')
                         get_groups_params = {
@@ -269,24 +269,18 @@ def create_group(entity_id, access_token):
                             'time_stamp': time_stamp,
                             'signature': signature
                         }
-                        get_groups_url = '{}/Groups?{}'.format(CORE_BASE_URL, urlencode(get_groups_params))
+                        get_groups_url = '{}/Groups?{}'.format(
+                            CORE_BASE_URL,
+                            urlencode(get_groups_params, encoding='utf-8', quote_via=quote)
+                        )
                         response = requests.get(get_groups_url, headers=headers)
                         response.raise_for_status()
                         response_json = response.json()
                         if response_json.get('totalResults') != 0:
                             order = member.get('order')
                             if order == 'higher':
-                                # Add the target group to the group
-                                resource = response_json.get('Resources')[0]
-                                group = {
-                                    'type': 'Group',
-                                    'value': target_group_resource.get('id')
-                                }
-                                resource.get('members').append(group)
-                                data = generate_request_body(resource, access_token, client_secret)
-                                update_group_url = '{}/Groups/{}'.format(CORE_BASE_URL, resource.get('id'))
-                                response = requests.put(update_group_url, data=data, headers=headers)
-                                response.raise_for_status()
+                                # Get the target group to be added
+                                groups.append(response_json.get('Resources')[0])
                             elif order == 'lower':
                                 # Add the group to the target group
                                 group = {
@@ -295,23 +289,39 @@ def create_group(entity_id, access_token):
                                 }
                                 members.append(group)
                             else:
-                                raise Exception('Order is invalid')
+                                raise Exception('Group order is invalid: {}'.format(order))
                     else:
-                        raise Exception('Member type is invalid')
-        # Get the services
-        service = management_info.get('service')
-        service_list = []
-        if service:
-            service_list = [{'value': service}]
+                        raise Exception('Member type is invalid: {}'.format(member_type))
+        else:
+            raise Exception('Member information file is not specified')
         
-        # Update the group information
-        target_group_resource['members'] = members
-        target_group_resource['administrators'] = administrators
-        target_group_resource['services'] = service_list
-        data = generate_request_body(target_group_resource, access_token, client_secret)
-        update_group_url = '{}/Groups/{}'.format(CORE_BASE_URL, target_group_resource.get('id'))
-        response = requests.put(update_group_url, data=data, headers=headers)
+        # Get the group information to be created
+        group_info = management_info.get('group_info')
+        group_info_data = {
+            'id': group_info.get('id'),
+            'displayName': group_info.get('name'),
+            'description': group_info.get('description'),
+            'public': group_info.get('public'),
+            'services': [{'value': management_info.get('service_id')}],
+            'members': members,
+            'administrators': administrators,
+        }
+        data = generate_request_body(group_info_data, access_token, client_secret)
+        create_group_url = '{}/Groups'.format(CORE_BASE_URL)
+        response = requests.post(create_group_url, json=data, headers=headers)
         response.raise_for_status()
+
+        group_data = {
+            'type': 'Group',
+            'value': response.json().get('id')
+        }
+        for group in groups:
+            # Add the target group to the group
+            group.get('members').append(group_data)
+            data = generate_request_body(group, access_token, client_secret)
+            update_group_url = '{}/Groups/{}'.format(CORE_BASE_URL, group.get('id'))
+            response = requests.put(update_group_url, json=data, headers=headers)
+            response.raise_for_status()
     except Exception as ex:
         management_info_key = replaced_entity_id + MANAGEMENT_INFO_SUFFIX
         create_group_key = replaced_entity_id + CREATE_GROUP_SUFFIX
@@ -387,6 +397,57 @@ def set_task_id(key, task_id, entity_id):
     replaced_entity_id = process_entity_id(entity_id)
     redis.set(replaced_entity_id + key, task_id)
     redis.close()
+
+def validate_member_info(member_info_file):
+    """Validate the member information file
+
+    Args:
+        member_info_file (str): Member information file path
+
+    Returns:
+        list: List of error messages
+            If the member information file is valid, returns an empty list.
+            If there are errors, returns a list of error messages.
+            If the member information file does not exist, returns a list with a single error message.
+    """
+    # Check if the member information file exists
+    if not os.path.exists(member_info_file):
+        return ['Member information file is not found']
+    
+    error_messages = []
+    # Check the member information file format
+    with open(member_info_file, 'r') as f:
+        member_info = csv.DictReader(f, delimiter='\t')
+        if member_info.fieldnames != MEMBER_INFO_HEADERS:
+            return ['Member information file format is invalid']
+        member_info = list(member_info)
+        for i, member in enumerate(member_info):
+            if member.get('type') == 'user':
+                if not member.get('name'):
+                    error_messages.append('User name is required at line {}'.format(i + 1))
+                if not member.get('email'):
+                    error_messages.append('User email is required at line {}'.format(i + 1))
+                if not member.get('eppn'):
+                    error_messages.append('User eppn is required at line {}'.format(i + 1))
+                if member.get('auth') not in USER_AUTHORIZATION.values():
+                    error_messages.append('User authorization level is invalid at line {}: {}'.format(i + 1, member.get('auth')))
+            elif member.get('type') == 'group':
+                if not member.get('name'):
+                    error_messages.append('Group name is required at line {}'.format(i + 1))
+                if member.get('order') not in ['higher', 'lower']:
+                    error_messages.append('Group order is invalid at line {}: {}'.format(i + 1, member.get('order')))
+            else:
+                error_messages.append('Member type is invalid at line {}: {}'.format(i + 1, member.get('type')))
+        
+        # Check if there is at least one administrator
+        users = [member for member in member_info if member.get('type') == 'user']
+        admins = [user for user in users if user.get('auth') in [
+            USER_AUTHORIZATION.get('admin'),
+            USER_AUTHORIZATION.get('member_admin')
+        ]]
+        if not admins:
+            error_messages.append('At least one administrator is required')
+    return error_messages
 
 def get_task_status(key, entity_id):
     """Get the task status

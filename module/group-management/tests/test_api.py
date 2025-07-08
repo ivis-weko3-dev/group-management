@@ -1,10 +1,8 @@
-
-import json
-
 from flask import url_for
 from mock import MagicMock, patch
 
 
+# .tox/c1/bin/pytest --cov=group_management tests/test_api.py::test_create_group -vv -s --cov-branch --cov-report=term --basetemp=/group-management/modules/group-management/.tox/c1/tmp
 def test_create_group(client):
     """Test create_group function""" 
     request_body = {
@@ -20,8 +18,11 @@ def test_create_group(client):
     task = MagicMock()
     task.id = 1
     with patch("group_management.api.create_group_task.apply_async", return_value=task):
-        actual = client.post(create_group_url, data=json.dumps(request_body),
-                        content_type='application/json')
+        actual = client.get(create_group_url,
+                            query_string=request_body,
+                            headers={
+                                'Content-Type': 'application/json',
+                            })
         expected = {
             'code': 200,
             'message': 'Create group task created successfully',
@@ -29,6 +30,8 @@ def test_create_group(client):
         assert actual.status_code == 200
         assert actual.json == expected
 
+
+# .tox/c1/bin/pytest --cov=group_management tests/test_api.py::test_get_status -vv -s --cov-branch --cov-report=term --basetemp=/group-management/modules/group-management/.tox/c1/tmp
 def test_get_status(client, mocker):
     """Test get_status function"""
     entity_id = "https://test-entity.org"    
